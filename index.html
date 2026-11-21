@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b5c7a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Inventur">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="static/icon-64.png?v=5424f7272e">
+<link rel="apple-touch-icon" href="static/icon-apple-180.png?v=620904057e">
+<title>Inventur-Abgleich</title>
+<style>
+/* Layout: Kopf mit Fortschritt, darunter Arbeitsbereich je Reiter; Scanfeld links, Raumliste rechts. */
+:root{
+  --bg:#edf0f2; --surface:#ffffff; --sunk:#f4f6f7; --ink:#15242d; --muted:#586a75; --line:#d2d9dd;
+  --accent:#0b5c7a; --accent-ink:#ffffff;
+  --ok:#1a7442; --ok-bg:#def2e5; --warn:#8a5700; --warn-bg:#fcebc4; --bad:#b0271f; --bad-bg:#fbe0dd;
+  --f-display:"IBM Plex Sans Condensed","Arial Narrow",Arial,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0f191f; --surface:#17242c; --sunk:#121e25; --ink:#e5ecef; --muted:#93a4ae; --line:#2a3a44;
+    --accent:#5fc1e0; --accent-ink:#06222d;
+    --ok:#70d39a; --ok-bg:#143424; --warn:#efc062; --warn-bg:#3a2d0c; --bad:#ff9087; --bad-bg:#43191a;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0f191f; --surface:#17242c; --sunk:#121e25; --ink:#e5ecef; --muted:#93a4ae; --line:#2a3a44;
+  --accent:#5fc1e0; --accent-ink:#06222d;
+  --ok:#70d39a; --ok-bg:#143424; --warn:#efc062; --warn-bg:#3a2d0c; --bad:#ff9087; --bad-bg:#43191a;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body)}
+.wrap{max-width:1180px;margin:0 auto;padding:20px 20px 48px;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 16px}
+h1{font:600 26px/1.1 var(--f-display);margin:0;letter-spacing:.01em;text-wrap:balance}
+h2{font:600 17px/1.2 var(--f-display);margin:0;letter-spacing:.02em;text-wrap:balance}
+.sub{color:var(--muted);font-size:13px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12.5px;color:var(--muted);background:var(--surface)}
+.chip b{color:var(--ink);font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+
+.summary{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.stat{display:flex;flex-direction:column;gap:2px;border-left:3px solid var(--line);padding-left:10px}
+.stat .n{font:600 26px/1 var(--f-mono);font-variant-numeric:tabular-nums}
+.stat .l{font-size:12.5px;color:var(--muted)}
+.stat.ok{border-color:var(--ok)} .stat.bad{border-color:var(--bad)} .stat.warn{border-color:var(--warn)}
+.bar{height:8px;border-radius:4px;background:var(--sunk);border:1px solid var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ok);width:0;transition:width .25s}
+@media (prefers-reduced-motion: reduce){.bar i{transition:none}}
+
+nav{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--line)}
+nav a{padding:8px 14px;text-decoration:none;color:var(--muted);font-weight:500;border:1px solid transparent;border-bottom:none;border-radius:8px 8px 0 0;margin-bottom:-1px}
+nav a[aria-current="page"]{color:var(--ink);background:var(--surface);border-color:var(--line)}
+nav a:hover{color:var(--ink)}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.cols{display:grid;grid-template-columns:minmax(300px,380px) minmax(0,1fr);gap:16px;align-items:start}
+label{font-size:12.5px;color:var(--muted);font-weight:500;display:block;margin-bottom:4px}
+input[type=text],input[type=search],textarea{width:100%;font:inherit;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:7px;padding:9px 11px}
+textarea{min-height:140px;font:13px/1.4 var(--f-mono);resize:vertical}
+#scan{font:600 24px/1.2 var(--f-mono);padding:14px;border-width:2px;border-color:var(--accent);background:var(--surface)}
+#raum{font:600 18px/1.2 var(--f-mono);text-transform:uppercase}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button{font:inherit;font-weight:500;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:7px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--muted)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.danger{color:var(--bad);border-color:var(--bad);background:transparent}
+button.small{padding:3px 8px;font-size:12.5px}
+button[disabled]{opacity:.5;cursor:not-allowed}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.opts{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted)}
+.opts label{display:inline-flex;gap:6px;align-items:center;margin:0;font-size:13px;font-weight:400}
+
+.fb{border-radius:9px;padding:12px 14px;border:1px solid var(--line);background:var(--sunk);min-height:92px;display:flex;flex-direction:column;gap:3px}
+.fb .t{font:600 17px/1.2 var(--f-display);letter-spacing:.02em}
+.fb .c{font:600 18px/1.2 var(--f-mono)}
+.fb.ok{background:var(--ok-bg);border-color:var(--ok)} .fb.ok .t{color:var(--ok)}
+.fb.warn{background:var(--warn-bg);border-color:var(--warn)} .fb.warn .t{color:var(--warn)}
+.fb.bad{background:var(--bad-bg);border-color:var(--bad)} .fb.bad .t{color:var(--bad)}
+
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;font-weight:600;color:var(--muted);background:var(--sunk);white-space:nowrap}
+tr:last-child td{border-bottom:none}
+td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+td.r{text-align:right}
+.pill{display:inline-block;border-radius:5px;padding:1px 8px;font-size:12px;font-weight:600;white-space:nowrap}
+.pill.ok{background:var(--ok-bg);color:var(--ok)} .pill.warn{background:var(--warn-bg);color:var(--warn)}
+.pill.bad{background:var(--bad-bg);color:var(--bad)} .pill.neu{background:var(--sunk);color:var(--muted);border:1px solid var(--line)}
+.empty{color:var(--muted);padding:14px;font-size:13.5px}
+.filters{display:flex;flex-wrap:wrap;gap:6px}
+.filters button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+.note{border-left:3px solid var(--warn);background:var(--warn-bg);padding:8px 12px;border-radius:0 7px 7px 0;font-size:13.5px}
+.note.bad{border-color:var(--bad);background:var(--bad-bg)}
+.hint{font-size:13px;color:var(--muted);max-width:65ch}
+.card{border:1px solid var(--line);border-radius:9px;padding:12px 14px;display:flex;flex-direction:column;gap:10px;background:var(--surface)}
+.cnr{font:600 19px/1.2 var(--f-mono);margin-right:6px}
+.dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:5px 14px;margin:0;font-size:13.5px;align-items:baseline}
+.dl dt{color:var(--muted)} .dl dd{margin:0;overflow-wrap:anywhere}
+.dl input{padding:5px 8px}
+.miss{color:var(--bad);font-style:italic}
+.stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:9px 14px;border-radius:8px;font-size:13.5px;max-width:calc(100% - 32px)}
+[hidden]{display:none!important}
+#printArea{display:none}
+@media print{
+  body.printing{background:#fff}
+  body.printing .wrap,body.printing #toast{display:none!important}
+  body.printing #printArea{display:block}
+}
+@media (max-width:820px){.cols{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+header{align-items:center}
+header .logo{border-radius:7px;flex:none}
+#btnInstall{margin-left:auto}
+/* großer Kamera-Knopf */
+button.gross{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:14px 16px;font-size:16px;font-weight:600;border-radius:10px}
+
+/* Kamera-Vollbild */
+body.cam-offen{overflow:hidden}
+.cam{position:fixed;inset:0;z-index:50;background:#000;color:#fff;display:flex;flex-direction:column;justify-content:space-between}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.cam-ziel{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+.cam-ziel span{width:min(86vw,560px);height:min(30vh,200px);border-radius:14px;box-shadow:0 0 0 100vmax rgba(0,0,0,.42);border:3px solid rgba(255,255,255,.9);transition:border-color .15s}
+.cam.blitz .cam-ziel span{border-color:#70d39a}
+.cam-oben,.cam-unten{position:relative;z-index:2;display:flex;gap:8px;padding:12px max(12px,env(safe-area-inset-right)) 12px max(12px,env(safe-area-inset-left))}
+.cam-oben{align-items:center;padding-top:max(12px,env(safe-area-inset-top));background:linear-gradient(rgba(0,0,0,.65),rgba(0,0,0,0))}
+.cam-oben label{margin:0;color:#fff;font-size:14px;font-weight:600}
+.cam-oben input{flex:1;min-width:0;max-width:220px;font:600 18px/1.2 var(--f-mono);text-transform:uppercase;background:rgba(255,255,255,.95);color:#15242d;border:none;border-radius:8px;padding:9px 11px}
+.cam-oben button{background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.4);margin-left:auto}
+.cam-oben button+button{margin-left:0}
+.cam-unten>*{min-width:0;max-width:100%;box-sizing:border-box}
+.cam-unten .fb .c,.cam-unten .fb .sub{overflow-wrap:anywhere}
+.cam-unten{flex-direction:column;padding-bottom:max(14px,env(safe-area-inset-bottom));background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.7) 30%)}
+.cam-unten .fb{min-height:0;background:rgba(23,36,44,.92);border-color:rgba(255,255,255,.25);color:#e5ecef}
+.cam-unten .fb .sub,.cam-unten .sub{color:#c3d0d7}
+.cam-unten .fb.ok{background:rgba(20,52,36,.94);border-color:#70d39a}.cam-unten .fb.ok .t{color:#70d39a}
+.cam-unten .fb.warn{background:rgba(58,45,12,.94);border-color:#efc062}.cam-unten .fb.warn .t{color:#efc062}
+.cam-unten .fb.bad{background:rgba(67,25,26,.94);border-color:#ff9087}.cam-unten .fb.bad .t{color:#ff9087}
+.cam-unten button{background:rgba(255,255,255,.95);color:#15242d;border:none}
+.cam-unten .note{background:rgba(58,45,12,.94);color:#fff}.cam-unten .note.bad{background:rgba(67,25,26,.94)}
+
+/* Touch-Geräte: größere Ziele, kein automatisches Zoomen bei Eingaben */
+@media (pointer:coarse){
+  button{min-height:42px;padding:8px 14px}
+  button.small{min-height:38px;padding:6px 12px;font-size:14px}
+  input[type=text],input[type=search],input[type=password],select,textarea{font-size:16px}
+  #scan{font-size:22px}
+}
+
+/* schmale Bildschirme */
+@media (max-width:720px){
+  body{font-size:15px}
+  .wrap{padding:10px max(12px,env(safe-area-inset-right)) calc(28px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));gap:12px}
+  header{gap:6px 8px}
+  header h1{font-size:19px}
+  header .chip{font-size:12px;padding:2px 8px}
+  .konto summary{padding:2px}
+  .konto summary #hUser{display:none}
+  nav{position:sticky;top:0;z-index:20;background:var(--bg);flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -12px;padding:6px 12px 0;gap:4px}
+  nav::-webkit-scrollbar{display:none}
+  nav a{white-space:nowrap;padding:9px 13px;font-size:14.5px}
+  .summary{padding:12px}
+  .stats{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+  .stat{padding-left:7px;border-left-width:3px}
+  .stat .n{font-size:20px}
+  .stat .l{font-size:11.5px;line-height:1.25}
+  .stat .l .lang{display:none}
+  .summary{gap:8px}
+  .panel{padding:12px}
+  .cols{gap:12px}
+  #scan{font-size:20px;padding:12px}
+  .fb{min-height:0}
+  .dl{grid-template-columns:minmax(0,40%) minmax(0,1fr);gap:4px 10px}
+  #abRow{flex-direction:column;align-items:stretch}
+  #abRow button{width:100%}
+  .filters{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;width:100%;padding-bottom:2px}
+  .filters::-webkit-scrollbar{display:none}
+  .filters button{white-space:nowrap}
+  #suche{max-width:none!important;width:100%}
+  .rooms{grid-template-columns:1fr}
+  /* Tabellen als Karten */
+  .tw.karten{border:none;border-radius:0;overflow:visible}
+  .karten table,.karten tbody,.karten tr,.karten td{display:block;width:100%}
+  .karten thead{display:none}
+  .karten tr{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:8px;background:var(--surface)}
+  .karten td{border:none;padding:4px 0;display:flow-root;text-align:right;overflow-wrap:anywhere}
+  .karten td::before{content:attr(data-label);float:left;margin-right:12px;color:var(--muted);font-size:12.5px;text-align:left;max-width:45%}
+  .karten td[data-label=""]{text-align:left}
+  .karten td[data-label=""]::before{display:none}
+  .karten td:empty{display:none}
+  .karten td .row{justify-content:flex-end;flex-wrap:wrap}
+  .karten td input,.karten td select{max-width:60%}
+  .karten td.empty{text-align:center;justify-content:center}
+}
+@media (max-width:720px) and (pointer:coarse){
+  .karten td .row button{flex:1 1 auto}
+}
+
+.stat .l .kurz{display:none}
+@media (max-width:720px){.stat .l .kurz{display:inline}}
+/* Scannen auf dem Handy: Kamera-Knopf und Rückmeldung zuerst */
+@media (max-width:720px){
+  #tab-scannen .panel:first-child{gap:10px}
+}
+
+/* Rasterspalten dürfen nicht durch lange Wörter breiter als der Bildschirm werden */
+.cols>*,.stack>*{min-width:0}
+.fb .c,.fb .sub,.dl dd{overflow-wrap:anywhere}
+@media (max-width:820px){.cols{grid-template-columns:minmax(0,1fr)}}
+
+/* Handy-Fassung */
+.cols>*,.stack>*{min-width:0}
+.fb .c,.fb .sub,.dl dd{overflow-wrap:anywhere}
+@media (max-width:820px){.cols{grid-template-columns:minmax(0,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img class="logo" src="static/icon-64.png?v=5424f7272e" alt="" width="28" height="28">
+    <h1>Inventur-Abgleich</h1>
+    <span class="chip">Grundliste <b id="listName">–</b></span>
+    <span class="chip" id="saveChip"><span class="dot" id="saveDot"></span><span id="saveText">Daten werden geladen</span></span>
+    <button id="btnInstall" class="small" hidden>App installieren</button>
+  </header>
+
+  <div id="notes"></div>
+
+  <section class="summary" aria-label="Stand der Inventur">
+    <div class="stats">
+      <div class="stat"><span class="n" id="sTotal">0</span><span class="l"><span class="lang">Positionen in der Grundliste</span><span class="kurz">Positionen</span></span></div>
+      <div class="stat ok"><span class="n" id="sFound">0</span><span class="l"><span class="lang">Vorhanden</span><span class="kurz">Vorhanden</span></span></div>
+      <div class="stat bad"><span class="n" id="sOpen">0</span><span class="l"><span class="lang">Nicht gefunden</span><span class="kurz">Offen</span></span></div>
+      <div class="stat warn"><span class="n" id="sUnk">0</span><span class="l"><span class="lang">Gescannt, nicht in der Liste</span><span class="kurz">Fremde</span></span></div>
+    </div>
+    <div class="bar" role="progressbar" aria-label="Anteil gefundener Positionen" aria-valuemin="0" aria-valuemax="100" id="bar"><i id="barI"></i></div>
+    <div class="row" id="bakRow" hidden>
+      <button id="btnBak" class="small">Automatische Excel-Sicherung einschalten</button>
+      <span class="sub" id="bakInfo">Die Ergebnisliste wird dann nach jedem Scan von selbst in eine Excel-Datei Ihrer Wahl geschrieben.</span>
+    </div>
+  </section>
+
+  <nav aria-label="Bereiche">
+    <a href="#scannen" data-tab="scannen">Scannen</a>
+    <a href="#abgleich" data-tab="abgleich">Abgleich</a>
+    <a href="#raeume" data-tab="raeume">Räume</a>
+    <a href="#grundliste" data-tab="grundliste">Grundliste</a>
+  </nav>
+
+  <section id="tab-scannen" class="cols">
+    <div class="panel">
+      <button id="btnCam" class="primary gross" type="button"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M3 5h2v14H3zm4 0h1v14H7zm3 0h3v14h-3zm5 0h1v14h-1zm3 0h3v14h-3z"/></svg>Mit der Kamera scannen</button>
+      <div>
+        <label for="raum">Raum, in dem Sie gerade scannen</label>
+        <input type="text" id="raum" list="raumListe" placeholder="z. B. A105" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="next">
+        <datalist id="raumListe"></datalist>
+      </div>
+      <form id="scanForm">
+        <label for="scan">Barcode scannen oder Inventarnummer eintippen</label>
+        <input type="text" id="scan" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="send" placeholder="Scanner bereit">
+      </form>
+      <div class="fb" id="fb" aria-live="polite">
+        <span class="t">Bereit</span>
+        <span class="sub">Raum eintragen, in das Scanfeld klicken und den ersten Aufkleber scannen. Jeder Scan wird dem eingetragenen Raum zugeordnet.</span>
+      </div>
+      <div class="opts">
+        <label for="optTon"><input type="checkbox" id="optTon" checked> Ton bei jedem Scan</label>
+        <label for="optAuto"><input type="checkbox" id="optAuto"> Ohne Enter übernehmen</label>
+      </div>
+      <p class="hint">Ein Handscanner (Bluetooth oder USB) schreibt wie eine Tastatur in das Scanfeld. Schließt er die Nummer nicht mit Enter ab, aktivieren Sie „Ohne Enter übernehmen“.</p>
+    </div>
+    <div class="stack">
+      <div class="panel">
+        <h2>Angaben zur zuletzt gescannten Nummer</h2>
+        <div id="detail"></div>
+      </div>
+      <div class="panel">
+        <div class="row" style="justify-content:space-between">
+          <h2 id="roomTitle">Erfasst in diesem Raum</h2>
+          <span class="sub" id="roomHint"></span>
+        </div>
+        <div id="roomScans"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-abgleich" class="panel" hidden>
+    <div class="row" style="justify-content:space-between">
+      <h2>Ergebnisliste</h2>
+      <div class="row">
+        <button id="btnXlsx" class="primary">Excel-Datei speichern</button>
+        <button id="btnCopy">Tabelle kopieren</button>
+      </div>
+    </div>
+    <div class="row">
+      <div class="filters" id="filters"></div>
+      <input type="search" id="suche" placeholder="Nummer oder Bezeichnung suchen" style="max-width:300px" aria-label="Ergebnisliste durchsuchen">
+    </div>
+    <div id="abDetail"></div>
+    <div class="tw karten"><table>
+      <thead><tr><th>Status</th><th>Inventarnr.</th><th>Anlagenart</th><th>Langbezeichnung</th><th>Raum laut Liste</th><th>Gescannt in</th><th style="text-align:right">AHK €</th><th>Angeschafft</th><th></th></tr></thead>
+      <tbody id="abBody"></tbody>
+    </table></div>
+    <p class="hint">Möbel ohne lesbaren Aufkleber können Sie hier von Hand als vorhanden markieren. Sie werden dem Raum zugeordnet, der im Reiter Scannen eingetragen ist.</p>
+  </section>
+
+  <section id="tab-raeume" class="stack" hidden>
+    <div class="panel" id="plBox">
+      <h2>Raumlisten mit Barcode</h2>
+      <p class="hint" style="margin:0">Erzeugt für jeden Raum ein Blatt mit allen dort erfassten Inventarnummern als Barcode. Bei der nächsten Inventur scannen Sie zuerst den Raum-Barcode oben auf dem Blatt und dann die Zeilen, statt jedes Möbelstück einzeln zu suchen.</p>
+      <div class="row"><button id="btnPlPrint" class="primary">Alle Raumlisten drucken</button><button id="btnPlFile">Alle Raumlisten als Datei speichern</button></div>
+    </div>
+    <div class="rooms" id="rooms"></div>
+  </section>
+
+  <section id="tab-grundliste" class="cols" hidden>
+    <div class="panel">
+      <h2>Aktuelle Grundliste</h2>
+      <div id="listInfo" class="sub"></div>
+      <h2 style="margin-top:8px">Neue Inventur beginnen</h2>
+      <p class="hint">Löscht alle erfassten Scans. Die Grundliste und Ihre ergänzten Angaben bleiben erhalten. Speichern Sie vorher die Ergebnisliste.</p>
+      <div><button id="btnReset" class="danger">Alle Scans löschen</button></div>
+      <div id="sichBox" hidden>
+        <h2 style="margin:8px 0 6px">Datensicherung</h2>
+        <p class="hint" style="margin:0 0 8px">Sichert Grundliste, Scans und ergänzte Angaben in eine Datei, etwa für den Umzug auf einen anderen Rechner. Beim Laden wird der aktuelle Stand ersetzt.</p>
+        <div class="row"><button id="btnSich">Datensicherung speichern</button></div>
+        <div style="margin-top:8px"><label for="sichDatei">Datensicherung laden</label><input type="file" id="sichDatei" accept=".json"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Neue Grundliste laden</h2>
+      <p class="hint">Laden Sie hier die Excel-Inventarliste hoch, die Ihr Bereich aus MACH erhält. Die Seite liest alle Spalten selbst ein und zeigt vor der Übernahme eine Vorschau. Liegt nur ein PDF vor, können Sie stattdessen dessen Text unten einfügen; dabei werden die Spalten nur grob getrennt.</p>
+      <div><label for="datei">Excel-Inventarliste aus MACH</label><input type="file" id="datei" accept=".xlsx,.xls,.csv"></div>
+      <div><label for="pdfText">Text aus der MACH-PDF-Liste</label><textarea id="pdfText" placeholder="1234567, Schreibtisch&#10;Schreibtisch, höhenverstellbar … € 450,00&#10;…"></textarea></div>
+      <div class="row"><button id="btnParse">Text prüfen</button></div>
+      <div id="draft"></div>
+    </div>
+  </section>
+</div>
+<div id="cam" class="cam" hidden role="dialog" aria-modal="true" aria-label="Scannen mit der Kamera">
+  <video id="camVideo" playsinline muted autoplay></video>
+  <div class="cam-ziel" aria-hidden="true"><span></span></div>
+  <div class="cam-oben">
+    <label for="camRaum">Raum</label>
+    <input type="text" id="camRaum" list="raumListe" placeholder="z. B. A105" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" enterkeyhint="done">
+    <button id="camLicht" type="button" hidden>Licht</button>
+    <button id="camZu" type="button">Fertig</button>
+  </div>
+  <div class="cam-unten">
+    <div id="camMsg"></div>
+    <div id="camErg" class="fb" aria-live="polite"><span class="t">Barcode in den Rahmen halten</span><span class="sub">Zuerst den Raum oben eintragen oder den Raum-Barcode einer Raumliste scannen.</span></div>
+    <div class="row" style="justify-content:space-between"><span class="sub" id="camZahl"></span><button id="camDetails" type="button" hidden>Details anzeigen</button></div>
+  </div>
+</div>
+<div id="toast" role="status" hidden></div>
+<div id="printArea"></div>
+
+<script src="static/xlsx.full.min.js?v=c9506197ca"></script>
+<script src="static/jsbarcode.min.js?v=e11355f2e9"></script>
+<script>
+function parseListText(text){
+  const HEAD=/^(Anlagenart\/|Kontierungstyp|Partner\/|Langbezeichnung|Standort\/|AHK|Hersteller\/|Anschaffungsdatum|Seriennummer\/|Baujahr|Campus\/ ?Gebäude\/|\d{1,3}\/\d{1,3}|Erstellt am .*|Mandant: .*|Angefordert von: .*|MACH BI|Architekt|Anlagen im Inventarbereich.*)$/;
+  const START=/^(\d{5,8}(?:\/\d{2})?),\s*(.+)$/;
+  const nm=/Anlagen im Inventarbereich\s+(\S+)/.exec(text);
+  const st=/Erstellt am\s+(?:\w+,\s*)?(\d{2}\.\d{2}\.\d{4})/.exec(text);
+  const items=[];let cur=null;
+  for(const raw of String(text).split(/\r?\n/)){
+    const line=raw.trim();
+    if(!line)continue;
+    if(/^Eingabeparameter/.test(line))break;
+    if(HEAD.test(line))continue;
+    const m=START.exec(line);
+    if(m){cur={nr:m[1],art:m[2].trim(),rest:[]};items.push(cur);}
+    else if(cur)cur.rest.push(line);
+  }
+  const strip=s=>s.replace(/€\s*[\d.]+,\d{2}/g,'').replace(/\b\d{2}\.\d{2}\.\d{4}(\s+\d{4})?\b/g,'').replace(/\s+/g,' ').trim();
+  return{name:nm?nm[1]:'',stand:st?st[1]:'',items:items.map(it=>{
+    const roh=it.rest.join(' | ');
+    const ahk=/€\s*([\d.]+,\d{2})/.exec(roh);
+    const dat=/\b(\d{2}\.\d{2}\.\d{4})\b/.exec(roh);
+    let raum=null;const rx=/(?:^|[^A-Za-z0-9])([A-Z]\d{3})(?![A-Za-z0-9])/g;let mm;
+    while((mm=rx.exec(roh))){if(!/^V\d{3}$/.test(mm[1])){raum=mm;break;}}
+    let info='';
+    for(const r of it.rest){info=strip(r);if(info&&info!=='/')break;}
+    return{nr:it.nr,art:it.art,info:info,ahk:ahk?ahk[1]:'',datum:dat?dat[1]:'',raum:raum?raum[1]:'',roh:roh};
+  })};
+}
+/* MACH-Standardliste (Excel): 7 Spalten, zwei Zeilen je Gegenstand.
+   Zeile 1: "Nr, Anlagenart" | Partner | Campus | Gebäude | Hersteller | Seriennummer | Standort
+   Zeile 2: Kontierungstyp | Langbezeichnung | – | – | Anschaffungsdatum | Baujahr | AHK */
+function parseMachRows(rows){
+  var START=/^\s*(\d{5,8}(?:\/\d{2})?),\s*([\s\S]*)$/;
+  var txt=function(v){return v==null?'':String(v).replace(/\s+/g,' ').trim()};
+  var p2=function(n){return String(n).padStart(2,'0')};
+  var datum=function(v){
+    if(v instanceof Date)return p2(v.getDate())+'.'+p2(v.getMonth()+1)+'.'+v.getFullYear();
+    if(typeof v==='number'&&v>1000&&v<80000){var d=new Date(Date.UTC(1899,11,30)+Math.round(v)*86400000);return p2(d.getUTCDate())+'.'+p2(d.getUTCMonth()+1)+'.'+d.getUTCFullYear()}
+    var m=/(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(txt(v));return m?p2(m[1])+'.'+p2(m[2])+'.'+m[3]:txt(v);
+  };
+  var geld=function(v){
+    if(typeof v==='number')return v.toFixed(2).replace('.',',').replace(/\B(?=(\d{3})+(?!\d))/g,'.');
+    return txt(v).replace(/^€\s*/,'');
+  };
+  var items=[],name='',seen={};
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i]||[];
+    for(var c=0;c<r.length;c++){var a=/Ausprägung:\s*(\S+)/.exec(String(r[c]==null?'':r[c]));if(a)name=a[1]}
+    var m=START.exec(String(r[0]==null?'':r[0]));
+    if(!m||seen[m[1]])continue;
+    seen[m[1]]=1;
+    var n=rows[i+1]||[],zwei=!START.test(String(n[0]==null?'':n[0]))&&!/^Eingabeparameter/.test(txt(n[0]));
+    if(!zwei)n=[];
+    var it={nr:m[1],art:txt(m[2]),kont:txt(n[0]),partner:txt(r[1]),bez:txt(n[1]),campus:txt(r[2]),geb:txt(r[3]),herst:txt(r[4]),datum:n[4]===''||n[4]==null?'':datum(n[4]),serien:txt(r[5]),baujahr:txt(n[5]),standort:txt(r[6]),ahk:n[6]===''||n[6]==null?'':geld(n[6]),raum:''};
+    var rx=/(?:^|[^A-Za-z0-9])([A-Z]\d{3})(?![A-Za-z0-9])/g,mm;
+    while((mm=rx.exec(it.standort))){if(!/^V\d{3}$/.test(mm[1])){it.raum=mm[1];break}}
+    Object.keys(it).forEach(function(k){if(it[k]==='')delete it[k]});
+    items.push(it);
+  }
+  return{name:name,items:items};
+}
+
+</script>
+<script>
+(function(){
+"use strict";
+var $=function(s){return document.querySelector(s)};
+var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+var LS={get:function(k,d){try{var v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set:function(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+var TOUCH=!!(window.matchMedia&&matchMedia('(pointer:coarse)').matches);
+var S={items:[],listName:'',listStand:'',listDocIds:[],sel:null,edit:null,raum:'',tab:'scannen',filter:'alle',q:'',
+  mode:'laden',slow:false,err:'',ton:true,auto:false,draft:null,last:null,resetArmed:false};
+var db=null,downloads=null,byNorm=new Map(),byDigits=new Map(),byId=new Map();
+var ST={scans:{remote:new Map(),pending:new Map(),ls:'inv.scans'},ergaenzungen:{remote:new Map(),pending:new Map(),ls:'inv.supp'}};
+/* Spalten der MACH-Liste; leere Felder kann man ergänzen, "notiz" ist immer frei */
+var FIELDS=[['art','Anlagenart'],['bez','Langbezeichnung'],['kont','Kontierungstyp'],['herst','Hersteller'],['serien','Seriennummer'],['datum','Anschaffungsdatum'],['baujahr','Baujahr'],['ahk','AHK (€)'],['partner','Partner'],['campus','Campus'],['geb','Gebäude'],['standort','Standort laut MACH'],['details','Weitere Angaben'],['notiz','Bemerkung']];
+
+/* ---------- Nummern vergleichen ---------- */
+function norm(s){return String(s).trim().toUpperCase().replace(/\s+/g,'')}
+function digits(s){return String(s).replace(/\D/g,'').replace(/^0+/,'')}
+function buildIndex(){
+  byNorm=new Map();byDigits=new Map();byId=new Map();
+  S.items.forEach(function(it){
+    byNorm.set(norm(it.nr),it);byId.set(docId(it.nr),it);
+    var d=digits(it.nr);
+    if(d)byDigits.set(d,byDigits.has(d)?null:it);
+  });
+}
+function lookup(code){
+  var it=byNorm.get(norm(code));
+  if(it)return it;
+  var d=digits(code);
+  if(d.length>=4){it=byDigits.get(d);if(it)return it}
+  /* Aufkleber tragen Nummer/Jahr, z. B. 3036554/2026; die Liste nennt 3036554 oder 003803/08 */
+  var g=String(code).match(/\d+/g);
+  if(g&&g.length>=2){
+    it=byDigits.get(digits(g[0]+g[1].slice(-2)));if(it)return it;
+    if(g[0].length>=5){it=byDigits.get(digits(g[0]));if(it)return it}
+  }
+  return null;
+}
+function docId(s){return 'n'+norm(s).replace(/[^A-Za-z0-9_\-~:@+]/g,'_').slice(0,150)}
+function merged(col){
+  var s=ST[col],m=new Map(s.remote);
+  s.pending.forEach(function(d,id){if(d)m.set(id,d);else m.delete(id)});
+  return m;
+}
+function scansMap(){return merged('scans')}
+/* Werte einer Nummer: zuerst Grundliste, sonst eigene Ergänzung */
+function view(id,supp){
+  var it=byId.get(id)||null,sp=supp.get(id),f=sp&&sp.felder||{},vals={},miss=0,erg=[];
+  FIELDS.forEach(function(F){
+    var k=F[0],lv=it&&it[k]!=null&&String(it[k]).trim()!==''?String(it[k]):'';
+    if(/^(fehlt|unbekannt|\/|-)$/i.test(lv.trim()))lv=''; /* Platzhalter aus MACH zählen als fehlend */
+    if(lv)vals[k]={v:lv,src:'liste'};
+    else if(f[k]!=null&&String(f[k]).trim()!==''){vals[k]={v:String(f[k]),src:'erg'};erg.push(F[1])}
+    else{vals[k]={v:'',src:''};if(k!=='details'&&k!=='notiz')miss++}
+  });
+  return{id:id,it:it,vals:vals,miss:miss,erg:erg};
+}
+function compute(){
+  var scans=scansMap(),found=new Map(),unknown=[];
+  scans.forEach(function(sc,id){
+    if(!sc||typeof sc.code!=='string')return;
+    var it=lookup(sc.code),row={id:id,code:sc.code,raum:sc.raum||'',ts:sc.ts||0,manuell:!!sc.manuell};
+    if(it){var p=found.get(it.nr);if(!p||row.ts>p.ts)found.set(it.nr,row)}
+    else unknown.push(row);
+  });
+  unknown.sort(function(a,b){return b.ts-a.ts});
+  return{scans:scans,found:found,unknown:unknown,supp:merged('ergaenzungen')};
+}
+function zeit(ts){return ts?new Date(ts).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):''}
+
+/* ---------- Speichern ---------- */
+var queue=Promise.resolve();
+function persist(id,data,col){
+  col=col||'scans';var s=ST[col];
+  if(!db){if(data)s.remote.set(id,data);else s.remote.delete(id);LS.set(s.ls,Array.from(s.remote.entries()));planBak();return}
+  s.pending.set(id,data);
+  queue=queue.then(function(){
+    var ref=db.doc(col+'/'+id);
+    return (data?ref.set(data):ref.delete()).then(function(){
+      if(data)s.remote.set(id,data);else s.remote.delete(id);
+      S.err='';
+    },function(e){
+      S.err='Die letzte Änderung konnte nicht gespeichert werden ('+esc(e&&e.code||'Fehler')+'). Bitte wiederholen.';
+    }).then(function(){
+      if(s.pending.get(id)===data)s.pending.delete(id);
+      render();
+    });
+  });
+}
+
+/* ---------- Scannen ---------- */
+var ac=null;
+function beep(kind){
+  if(!S.ton)return;
+  try{
+    ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+    var o=ac.createOscillator(),g=ac.createGain();
+    o.type=kind==='ok'?'sine':'square';
+    o.frequency.value=kind==='ok'?880:kind==='warn'?520:220;
+    g.gain.value=.07;o.connect(g);g.connect(ac.destination);
+    o.start();o.stop(ac.currentTime+(kind==='ok'?.09:.3));
+  }catch(e){}
+}
+/* Feststelltaste oder falsche Scanner-Tastatursprache: Ziffern kommen als !"§$%&/()= an */
+var SHIFT={'!':'1','"':'2','§':'3','$':'4','%':'5','&':'6','/':'7','(':'8',')':'9','=':'0'};
+function unshift(code){
+  if(/\d/.test(code)||!/^[!"§$%&\/()=]{5,}$/.test(code))return code;
+  var t=code.split('').map(function(c){return SHIFT[c]}).join('');
+  var m=/^(\d{5,8})7((?:19|20)\d{2})$/.exec(t);
+  return m?m[1]+'/'+m[2]:t;
+}
+function addScan(raw,manuell,kamera){
+  var code=unshift(String(raw).trim());
+  if(!code)return;
+  var rm=/^raum\s+(\S.*)$/i.exec(code);
+  if(rm&&!manuell){ /* Raum-Barcode von einer gedruckten Raumliste */
+    setRaum(rm[1]);S.sel=null;S.edit=null;
+    S.last={k:'ok',t:'Raum gewechselt',c:S.raum,d:'Alle folgenden Scans werden Raum '+S.raum+' zugeordnet.'};
+    beep('ok');render();return true;
+  }
+  if(!S.raum){
+    S.last={k:'bad',t:'Kein Raum eingetragen',c:code,d:'Tragen Sie zuerst den Raum ein. Der Scan wurde nicht übernommen.'};
+    beep('bad');render();if(kamera)$('#camRaum').focus();else if(!manuell)$('#raum').focus();return false;
+  }
+  var it=lookup(code),id=docId(it?it.nr:code),prev=scansMap().get(id);
+  S.sel={id:id,code:it?it.nr:code};S.edit=null;
+  var name=it?(it.art+(it.bez&&it.bez!==it.art?' · '+it.bez:'')):'';
+  var soll=it&&it.raum&&it.raum!==S.raum?' Die Liste nennt Raum '+it.raum+'.':'';
+  if(prev&&prev.raum===S.raum){
+    S.last={k:'warn',t:'Schon in diesem Raum erfasst',c:it?it.nr:code,d:name||'Diese Nummer steht nicht in der Grundliste.'};
+    beep('warn');render();return true;
+  }
+  persist(id,{code:it&&manuell?it.nr:code,raum:S.raum,ts:Date.now(),manuell:!!manuell});S.neu=true;
+  if(it&&prev)S.last={k:'warn',t:'Umgebucht von '+prev.raum+' nach '+S.raum,c:it.nr,d:name};
+  else if(it)S.last={k:'ok',t:'Vorhanden',c:it.nr,d:name+'.'+soll};
+  else S.last={k:'bad',t:'Nicht in der Grundliste',c:code,d:'Die Nummer wurde für Raum '+S.raum+' notiert. Rechts können Sie Angaben dazu eintragen.'};
+  beep(S.last.k);render();return true;
+}
+function setRaum(v){
+  S.raum=String(v).trim().toUpperCase();LS.set('inv.raum',S.raum);
+  var f=$('#raum');if(f.value.trim().toUpperCase()!==S.raum)f.value=S.raum;
+  var cf=$('#camRaum');if(cf&&cf.value.trim().toUpperCase()!==S.raum)cf.value=S.raum;
+  render();
+}
+
+/* ---------- Anzeige ---------- */
+function pill(k,t){return '<span class="pill '+k+'">'+esc(t)+'</span>'}
+function statusOf(it,C){
+  var sc=C.found.get(it.nr);
+  if(!sc)return{k:'bad',t:'Nicht gefunden',f:'fehlt',sc:null};
+  if(it.raum&&sc.raum!==it.raum)return{k:'warn',t:'Vorhanden, anderer Raum',f:'abweichend',sc:sc};
+  return{k:'ok',t:'Vorhanden',f:'vorhanden',sc:sc};
+}
+function card(id,code,C){
+  var V=view(id,C.supp),it=V.it,nr=it?it.nr:code,sc=C.scans.get(id),edit=S.edit===id;
+  var h='<div class="card"><div class="row" style="justify-content:space-between"><div><span class="cnr">'+esc(nr)+'</span>'+
+    (it?pill('ok','In der Grundliste'):pill('bad','Nicht in der Grundliste'))+(sc?' '+pill('neu','Erfasst in Raum '+sc.raum):' '+pill('neu','Noch nicht erfasst'))+'</div>'+
+    (edit?'':'<div class="row">'+(sc?'<button class="small" data-edit="'+esc(id)+'" data-focus="raum">Raum ändern</button>':'')+'<button class="small" data-edit="'+esc(id)+'">'+(V.miss===1?'1 fehlende Angabe ergänzen':V.miss?V.miss+' fehlende Angaben ergänzen':'Bemerkung eintragen')+'</button></div>')+'</div>';
+  var rows='';
+  if(sc)rows+=edit?'<dt><label for="f-raum" style="margin:0;font-size:inherit;font-weight:400">Erfasst in Raum</label></dt><dd><input type="text" id="f-raum" name="__raum" list="raumListe" value="'+esc(sc.raum)+'" autocomplete="off" style="text-transform:uppercase;max-width:160px"></dd>'
+    :'<dt>Erfasst in Raum</dt><dd><b>'+esc(sc.raum)+'</b> <span class="sub">· '+esc(zeit(sc.ts))+(sc.manuell?' · von Hand':'')+(sc.umgebucht?' · Raum geändert am '+esc(zeit(sc.umgebucht)):'')+'</span></dd>';
+  FIELDS.forEach(function(F){
+    var k=F[0],x=V.vals[k];
+    if(k==='details'&&!x.v)return;
+    if(edit&&x.src!=='liste'&&k!=='details')rows+='<dt><label for="f-'+k+'" style="margin:0;font-size:inherit;font-weight:400">'+esc(F[1])+'</label></dt><dd><input type="text" id="f-'+k+'" name="'+k+'" value="'+esc(x.v)+'" autocomplete="off"></dd>';
+    else rows+='<dt>'+esc(F[1])+'</dt><dd>'+(x.v?esc(x.v)+(x.src==='erg'?' '+pill('warn','ergänzt'):''):(k==='notiz'?'<span class="sub">–</span>':'<span class="miss">fehlt in der Liste</span>'))+'</dd>';
+  });
+  if(edit)h+='<form data-form="'+esc(id)+'" data-nr="'+esc(nr)+'"><dl class="dl">'+rows+'</dl><div class="row" style="margin-top:10px"><button class="primary" type="submit">Speichern</button><button type="button" data-cancel="1">Abbrechen</button></div></form>';
+  else h+='<dl class="dl">'+rows+'</dl>';
+  return h+'</div>';
+}
+function render(){render0();labels();camAnzeige()}
+function render0(){
+  var C=compute(),total=S.items.length,found=C.found.size;
+  $('#listName').textContent=S.listName?(S.listName+(S.listStand?' · Stand '+S.listStand:'')):(total?'ohne Namen':'keine geladen');
+  $('#sTotal').textContent=total;$('#sFound').textContent=found;$('#sOpen').textContent=total-found;$('#sUnk').textContent=C.unknown.length;
+  var pct=total?Math.round(found/total*100):0;
+  $('#barI').style.width=pct+'%';$('#bar').setAttribute('aria-valuenow',pct);
+
+  var dot=$('#saveDot'),txt=$('#saveText');
+  if(S.mode==='ok'){dot.className='dot ok';txt.textContent='Wird automatisch gespeichert'}
+  else if(S.mode==='lokal'){dot.className=bak.h&&!bak.err?'dot ok':'dot warn';txt.textContent=bak.h&&!bak.err?'In diesem Browser gespeichert, Excel-Sicherung aktiv':'Nur auf diesem Gerät gespeichert'}
+  else{dot.className='dot';txt.textContent='Daten werden geladen'}
+  var n='';
+  if(S.err)n+='<div class="note bad">'+S.err+'</div>';
+  if(S.mode==='laden'&&S.slow)n+='<div class="note">Die gespeicherten Daten sind noch nicht erreichbar. Bitte noch nicht scannen, bis die Grundliste erscheint.</div>';
+  if(S.mode==='lokal'&&!bak.h&&bak.alt&&total)n+='<div class="note">Die automatische Excel-Sicherung ist nach dem Neuladen pausiert. Klicken Sie oben auf „Sicherung in '+esc(bak.alt.name)+' fortsetzen“.</div>';
+  else if(S.mode==='lokal'&&!bak.h&&total)n+='<div class="note">Alle Daten liegen nur auf diesem Gerät. Sichern Sie zwischendurch mit „Excel-Datei speichern“ (Reiter Abgleich) oder der Datensicherung (Reiter Grundliste).</div>';
+  if(S.mode!=='laden'&&!total)n+='<div class="note">Es ist noch keine Grundliste geladen. Öffnen Sie den Reiter <a href="#grundliste">Grundliste</a> und laden Sie die Excel-Inventarliste Ihres Bereichs hoch.</div>';
+  $('#notes').innerHTML=n;
+
+  ['scannen','abgleich','raeume','grundliste'].forEach(function(t){
+    $('#tab-'+t).hidden=S.tab!==t;
+    var a=document.querySelector('nav a[data-tab="'+t+'"]');
+    if(S.tab===t)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');
+  });
+
+  /* Räume für Vorschlagsliste */
+  var rooms=new Map();
+  C.scans.forEach(function(sc,id){if(!sc||!sc.raum)return;if(!rooms.has(sc.raum))rooms.set(sc.raum,[]);rooms.get(sc.raum).push({id:id,code:sc.code,ts:sc.ts||0,manuell:!!sc.manuell})});
+  var sug=new Set(rooms.keys());S.items.forEach(function(it){if(it.raum)sug.add(it.raum)});
+  $('#raumListe').innerHTML=Array.from(sug).sort().map(function(r){return '<option value="'+esc(r)+'">'}).join('');
+
+  /* Rückmeldung */
+  if(S.last){
+    var fb=$('#fb');fb.className='fb '+S.last.k;
+    fb.innerHTML='<span class="t">'+esc(S.last.t)+'</span><span class="c">'+esc(S.last.c)+'</span><span class="sub">'+esc(S.last.d)+'</span>';
+  }
+
+  /* Scans im aktuellen Raum */
+  $('#roomTitle').textContent=S.raum?'Erfasst in Raum '+S.raum:'Erfasst in diesem Raum';
+  var here=(rooms.get(S.raum)||[]).slice().sort(function(a,b){return b.ts-a.ts});
+  var expected=S.raum?S.items.filter(function(it){return it.raum===S.raum&&!C.found.has(it.nr)}):[];
+  $('#roomHint').textContent=S.raum?(here.length+' erfasst'+(expected.length?' · '+expected.length+' laut Liste hier erwartet und noch offen':'')):'';
+  var h='';
+  if(!S.raum)h='<div class="empty">Tragen Sie links einen Raum ein, um zu beginnen.</div>';
+  else{
+    if(here.length){
+      h+='<div class="tw karten"><table><thead><tr><th>Inventarnr.</th><th>Bezeichnung</th><th>Status</th><th>Erfasst</th><th></th></tr></thead><tbody>';
+      here.forEach(function(sc){
+        var it=lookup(sc.code),V=view(sc.id,C.supp),a=V.vals.art.v,b=V.vals.bez.v;
+        h+='<tr><td class="num">'+esc(it?it.nr:sc.code)+'</td><td>'+(a||b?esc(a)+'<div class="sub">'+esc(b)+'</div>':'<span class="sub">keine Angaben</span>')+'</td><td>'+
+          (it?pill(it.raum&&it.raum!==S.raum?'warn':'ok',it.raum&&it.raum!==S.raum?'Liste: '+it.raum:'In der Liste'):pill('bad','Nicht in der Liste'))+(sc.manuell?' '+pill('neu','von Hand'):'')+
+          '</td><td class="num">'+esc(zeit(sc.ts))+'</td><td><div class="row" style="flex-wrap:nowrap"><button class="small" data-sel="'+esc(sc.id)+'" data-code="'+esc(it?it.nr:sc.code)+'">Details</button><button class="small" data-del="'+esc(sc.id)+'">Entfernen</button></div></td></tr>';
+      });
+      h+='</tbody></table></div>';
+    }else h+='<div class="empty">In diesem Raum ist noch nichts erfasst.</div>';
+    if(expected.length){
+      h+='<h2 style="margin-top:12px">Laut Liste in '+esc(S.raum)+' erwartet, noch nicht gescannt</h2><div class="tw"><table><tbody>';
+      expected.forEach(function(it){h+='<tr><td class="num">'+esc(it.nr)+'</td><td>'+esc(it.art)+'<div class="sub">'+esc(it.bez)+'</div></td><td><button class="small" data-sel="'+esc(docId(it.nr))+'" data-code="'+esc(it.nr)+'">Details</button></td></tr>'});
+      h+='</tbody></table></div>';
+    }
+  }
+  $('#roomScans').innerHTML=h;
+
+  /* Angaben zur gewählten Nummer: nur im sichtbaren Reiter, ein offenes Formular bleibt unangetastet */
+  var host=S.tab==='abgleich'?$('#abDetail'):S.tab==='scannen'?$('#detail'):null;
+  [$('#detail'),$('#abDetail')].forEach(function(el){if(el!==host)el.innerHTML=''});
+  if(host&&!(S.edit&&host.querySelector('form[data-form]')))
+    host.innerHTML=S.sel?card(S.sel.id,S.sel.code,C):(S.tab==='scannen'?'<div class="empty">Nach einem Scan stehen hier alle Angaben aus der Grundliste zu dieser Nummer. Fehlende Angaben können Sie ergänzen.</div>':'');
+
+  /* Abgleich */
+  var abw=0;S.items.forEach(function(it){if(statusOf(it,C).f==='abweichend')abw++});
+  var F=[['alle','Alle',total+C.unknown.length],['vorhanden','Vorhanden',found],['fehlt','Nicht gefunden',total-found],['abweichend','Anderer Raum',abw],['unbekannt','Nicht in der Liste',C.unknown.length]];
+  $('#filters').innerHTML=F.map(function(f){return '<button class="small" data-filter="'+f[0]+'" aria-pressed="'+(S.filter===f[0])+'">'+f[1]+' <span class="mono">'+f[2]+'</span></button>'}).join('');
+  var q=S.q.trim().toLowerCase(),rows='';
+  var txt=function(V){return FIELDS.map(function(F){return V.vals[F[0]].v}).join(' ')};
+  var det=function(id,code){return '<button class="small" data-sel="'+esc(id)+'" data-code="'+esc(code)+'">Details</button>'};
+  S.items.forEach(function(it){
+    var st=statusOf(it,C),id=docId(it.nr),V=view(id,C.supp);
+    if(S.filter==='unbekannt')return;
+    if(S.filter==='vorhanden'&&!st.sc)return;
+    if(S.filter==='fehlt'&&st.sc)return;
+    if(S.filter==='abweichend'&&st.f!=='abweichend')return;
+    if(q&&(it.nr+' '+txt(V)).toLowerCase().indexOf(q)<0)return;
+    rows+='<tr><td>'+pill(st.k,st.t)+(V.erg.length?' '+pill('neu','ergänzt'):'')+'</td><td class="num">'+esc(it.nr)+'</td><td>'+esc(V.vals.art.v)+'</td><td>'+esc(V.vals.bez.v)+'</td><td class="num">'+esc(it.raum)+'</td><td class="num">'+esc(st.sc?st.sc.raum:'')+(st.sc&&st.sc.manuell?' '+pill('neu','von Hand'):'')+'</td><td class="num r">'+esc(V.vals.ahk.v)+'</td><td class="num">'+esc(V.vals.datum.v)+'</td><td><div class="row" style="flex-wrap:nowrap">'+det(id,it.nr)+
+      (st.sc?'<button class="small" data-del="'+esc(st.sc.id)+'">Zurücknehmen</button>':'<button class="small" data-mark="'+esc(it.nr)+'">Als vorhanden markieren</button>')+'</div></td></tr>';
+  });
+  if(S.filter==='alle'||S.filter==='unbekannt')C.unknown.forEach(function(sc){
+    var V=view(sc.id,C.supp);
+    if(q&&(sc.code+' '+txt(V)).toLowerCase().indexOf(q)<0)return;
+    rows+='<tr><td>'+pill('warn','Nicht in der Liste')+'</td><td class="num">'+esc(sc.code)+'</td><td>'+esc(V.vals.art.v)+'</td><td>'+esc(V.vals.bez.v)+'</td><td></td><td class="num">'+esc(sc.raum)+'</td><td class="num r">'+esc(V.vals.ahk.v)+'</td><td class="num">'+esc(V.vals.datum.v)+'</td><td><div class="row" style="flex-wrap:nowrap">'+det(sc.id,sc.code)+'<button class="small" data-del="'+esc(sc.id)+'">Entfernen</button></div></td></tr>';
+  });
+  $('#abBody').innerHTML=rows||'<tr><td colspan="9" class="empty">Keine Einträge für diese Auswahl.</td></tr>';
+  $('#btnXlsx').hidden=!(downloads||EIGEN)||!window.XLSX;
+  $('#sichBox').hidden=S.mode!=='lokal';
+  renderBak();
+
+  /* Räume */
+  var rh='';
+  Array.from(rooms.keys()).sort().forEach(function(r){
+    var list=rooms.get(r).slice().sort(function(a,b){return a.code<b.code?-1:1});
+    rh+='<div class="panel"><div class="row" style="justify-content:space-between"><h2>Raum '+esc(r)+' <span class="sub mono">'+list.length+'</span></h2><div class="row">'+(plOk()?'<button class="small" data-pl="'+esc(r)+'">Liste mit Barcode</button>':'')+'<button class="small" data-room="'+esc(r)+'">Hier weiterscannen</button></div></div><div class="tw"><table><tbody>';
+    list.forEach(function(sc){var it=lookup(sc.code),V=view(sc.id,C.supp);rh+='<tr><td class="num">'+esc(it?it.nr:sc.code)+'</td><td>'+esc(V.vals.art.v)+'<div class="sub">'+esc(V.vals.bez.v)+'</div>'+(it?'':pill('warn','Nicht in der Liste'))+'</td></tr>'});
+    rh+='</tbody></table></div></div>';
+  });
+  $('#plBox').hidden=!plOk()||!rooms.size;$('#btnPlPrint').hidden=!EIGEN;
+  $('#rooms').innerHTML=rh||'<div class="panel"><div class="empty">Noch keine Scans. Sobald Sie in einem Raum gescannt haben, erscheint er hier mit allen zugeordneten Inventarnummern.</div></div>';
+
+  /* Grundliste */
+  $('#listInfo').innerHTML=total?((EINGEBAUT&&S.items===EINGEBAUT.items?'<div style="margin-bottom:4px">Mitgelieferte Liste, noch keine eigene hochgeladen.</div>':'')+'<b>'+esc(S.listName||'Ohne Namen')+'</b>'+(S.listStand?', erstellt am '+esc(S.listStand):'')+' · '+total+' Positionen'):'Keine Grundliste geladen.';
+  var rb=$('#btnReset');rb.textContent=S.resetArmed?'Wirklich alle '+C.scans.size+' Scans löschen?':'Alle Scans löschen';rb.disabled=!C.scans.size;
+  var d='';
+  if(S.draft){
+    if(S.draft.info)d='<div class="note" style="border-color:var(--ok);background:var(--ok-bg)">'+esc(S.draft.info)+'</div>';
+    else if(S.draft.error)d='<div class="note bad">'+esc(S.draft.error)+'</div>';
+    else{
+      d='<div class="note">'+S.draft.items.length+' Positionen erkannt'+(S.draft.name?' für '+esc(S.draft.name):'')+'. Bitte die ersten Zeilen prüfen.</div><div class="tw" style="margin-top:8px"><table><thead><tr><th>Inventarnr.</th><th>Anlagenart</th><th>Langbezeichnung</th><th>Raum</th></tr></thead><tbody>';
+      S.draft.items.slice(0,6).forEach(function(it){d+='<tr><td class="num">'+esc(it.nr)+'</td><td>'+esc(it.art)+'</td><td>'+esc(it.bez)+'</td><td class="num">'+esc(it.raum)+'</td></tr>'});
+      d+='</tbody></table></div><div class="row" style="margin-top:10px"><button class="primary" id="btnUse">Als Grundliste übernehmen</button><button id="btnDrop">Verwerfen</button></div>';
+    }
+  }
+  $('#draft').innerHTML=d;
+}
+var toastT=null;
+function toast(t){var e=$('#toast');e.textContent=t;e.hidden=false;clearTimeout(toastT);toastT=setTimeout(function(){e.hidden=true},3500)}
+
+/* ---------- Export ---------- */
+function exportRows(){
+  var C=compute(),L=FIELDS.map(function(F){return F[1]}),vals=function(V){return FIELDS.map(function(F){return V.vals[F[0]].v})};
+  var ab=[['Status','Inventarnummer'].concat(L,['Raum laut Liste','Gescannt in Raum','Erfasst am','Erfassung','Von mir ergänzte Felder'])];
+  var fehlt=[['Inventarnummer'].concat(L,['Raum laut Liste'])];
+  var raum=[['Raum','Inventarnummer','Anlagenart','Langbezeichnung','In der Grundliste']];
+  S.items.forEach(function(it){
+    var st=statusOf(it,C),sc=st.sc,V=view(docId(it.nr),C.supp);
+    ab.push([st.t,it.nr].concat(vals(V),[it.raum||'',sc?sc.raum:'',sc?zeit(sc.ts):'',sc?(sc.manuell?'von Hand':'Scan'):'',V.erg.join(', ')]));
+    if(!sc)fehlt.push([it.nr].concat(vals(V),[it.raum||'']));
+  });
+  C.unknown.forEach(function(sc){var V=view(sc.id,C.supp);ab.push(['Nicht in der Liste',sc.code].concat(vals(V),['',sc.raum,zeit(sc.ts),'Scan',V.erg.join(', ')]))});
+  var all=[];
+  C.scans.forEach(function(sc,id){if(!sc||typeof sc.code!=='string')return;var it=lookup(sc.code),V=view(id,C.supp);all.push([sc.raum||'',it?it.nr:sc.code,V.vals.art.v,V.vals.bez.v,it?'ja':'nein'])});
+  all.sort(function(a,b){return a[0]===b[0]?(a[1]<b[1]?-1:1):(a[0]<b[0]?-1:1)});
+  return{ab:ab,fehlt:fehlt,raum:raum.concat(all)};
+}
+/* ---------- Raumlisten mit Barcode ---------- */
+function plOk(){return typeof window.JsBarcode==='function'&&(EIGEN||!!downloads)}
+function barcode(text){
+  try{
+    var svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    window.JsBarcode(svg,text,{format:'CODE128',width:2,height:50,displayValue:false,margin:0,marginLeft:20,marginRight:20});
+    var w=parseFloat(svg.getAttribute('width')),h=parseFloat(svg.getAttribute('height'));
+    if(!(w>0&&h>0))return '';
+    svg.setAttribute('viewBox','0 0 '+w+' '+h);svg.setAttribute('preserveAspectRatio','none');svg.removeAttribute('style');
+    svg.setAttribute('width',(w/2*0.33).toFixed(1)+'mm');svg.setAttribute('height','11mm'); /* Strichbreite 0,33 mm */
+    return svg.outerHTML;
+  }catch(e){return ''}
+}
+var PLCSS='.pl{font:10.5pt/1.3 Arial,Helvetica,sans-serif;color:#000;background:#fff}'+
+  '.pl section{page-break-after:always;break-after:page;padding:0 0 6mm}.pl section:last-child{page-break-after:auto;break-after:auto}'+
+  '.pl .kopf{display:flex;justify-content:space-between;align-items:flex-end;gap:10mm;border-bottom:1.5pt solid #000;padding-bottom:3mm;margin-bottom:3mm}'+
+  '.pl h1{font:bold 20pt/1.1 Arial,Helvetica,sans-serif;margin:0 0 1mm}.pl .meta{font-size:9.5pt}'+
+  '.pl .rb{text-align:center;font-size:8.5pt}.pl .rb svg{display:block;margin:0 auto 1mm}'+
+  '.pl table{border-collapse:collapse;width:100%}.pl th{font-size:8.5pt;text-align:left;border-bottom:1pt solid #000;padding:1.5mm 2mm;background:none;color:#000}'+
+  '.pl td{border-bottom:.5pt solid #999;padding:3.5mm 2mm;vertical-align:middle;color:#000}.pl tr{page-break-inside:avoid;break-inside:avoid}'+
+  '.pl .nr{font:bold 12pt/1.2 "Courier New",monospace;white-space:nowrap}.pl .kl{font-size:8.5pt;color:#333}'+
+  '.pl .box{display:inline-block;width:5mm;height:5mm;border:1pt solid #000}.pl .fuss{margin-top:8mm;font-size:9.5pt}'+
+  '@page{size:A4;margin:12mm}';
+function plHtml(nur){
+  var C=compute(),rooms=new Map();
+  C.scans.forEach(function(sc,id){if(!sc||!sc.raum||typeof sc.code!=='string')return;if(nur&&sc.raum!==nur)return;if(!rooms.has(sc.raum))rooms.set(sc.raum,[]);rooms.get(sc.raum).push({id:id,code:sc.code})});
+  var heute=new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}),h='';
+  Array.from(rooms.keys()).sort().forEach(function(r){
+    var list=rooms.get(r).map(function(sc){var it=lookup(sc.code),V=view(sc.id,C.supp);return{nr:it?it.nr:sc.code,it:it,V:V}}).sort(function(a,b){return a.nr<b.nr?-1:1});
+    h+='<section><div class="kopf"><div><h1>Inventarliste Raum '+esc(r)+'</h1><div class="meta">Inventarbereich '+esc(S.listName||'–')+' · '+list.length+' Positionen · Stand der Inventur '+esc(heute)+'</div></div>'+
+      '<div class="rb">'+barcode('RAUM '+r)+'Zuerst scannen: stellt Raum '+esc(r)+' ein</div></div>'+
+      '<table><thead><tr><th>Barcode</th><th>Inventarnr.</th><th>Gegenstand</th><th>Bemerkung</th><th>Da</th></tr></thead><tbody>';
+    list.forEach(function(x){
+      var bc=barcode(x.nr);
+      h+='<tr><td>'+(bc||'<span class="kl">kein Barcode möglich</span>')+'</td><td class="nr">'+esc(x.nr)+'</td><td>'+esc(x.V.vals.art.v)+'<div class="kl">'+esc(x.V.vals.bez.v)+(x.it?'':' (nicht in der Grundliste)')+'</div></td><td class="kl">'+esc(x.V.vals.notiz.v)+'</td><td><span class="box"></span></td></tr>';
+    });
+    h+='</tbody></table><div class="fuss">Vor dem Scannen prüfen, ob jedes Stück noch im Raum steht, und abhaken. Geprüft am ____________ von ________________________</div></section>';
+  });
+  return{n:rooms.size,html:'<div class="pl">'+h+'</div>'};
+}
+function plPrint(nur){
+  var P=plHtml(nur);if(!P.n){toast('Es sind noch keine Scans vorhanden.');return}
+  if(!EIGEN||typeof window.print!=='function'){plFile(nur);return}
+  $('#printArea').innerHTML='<style>'+PLCSS+'</style>'+P.html;
+  document.body.classList.add('printing');
+  var fertig=function(){document.body.classList.remove('printing');$('#printArea').innerHTML='';window.removeEventListener('afterprint',fertig)};
+  window.addEventListener('afterprint',fertig);
+  setTimeout(function(){window.print()},50);
+}
+function plFile(nur){
+  var P=plHtml(nur);if(!P.n){toast('Es sind noch keine Scans vorhanden.');return}
+  var name='Raumlisten_'+((S.listName||'Liste').replace(/[^A-Za-z0-9_-]/g,'')||'Liste')+(nur?'_'+nur.replace(/[^A-Za-z0-9_-]/g,''):'')+'_'+fileStamp()+'.html';
+  var doc='<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Raumlisten '+esc(S.listName)+'</title><style>body{margin:0;padding:12mm}@media print{body{padding:0}}'+PLCSS+'</style></head><body>'+P.html+'</body></html>';
+  saveFile(name,doc,'text/html').then(function(){toast('Raumlisten gespeichert. Datei öffnen und mit Strg+P drucken.')},function(e){if(!e||e.code!=='declined')toast('Die Raumlisten konnten nicht gespeichert werden.')});
+}
+function fileStamp(){var d=new Date(),p=function(n){return String(n).padStart(2,'0')};return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())}
+var EIGEN=!(window.claude&&typeof window.claude.use==='function'); /* als Datei geöffnet, ohne Claude */
+function buildXlsx(){
+  var R=exportRows(),wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(R.ab),'Abgleich');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(R.fehlt),'Nicht gefunden');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(R.raum),'Nach Raum');
+  return XLSX.write(wb,{type:'array',bookType:'xlsx'});
+}
+function xlsxName(){return 'Inventur_'+((S.listName||'Liste').replace(/[^A-Za-z0-9_-]/g,'')||'Liste')+'_'+fileStamp()+'.xlsx'}
+function saveFile(name,data,mime){
+  try{
+    var datei=new File([data],name,{type:mime});
+    if(window.matchMedia&&matchMedia('(pointer:coarse)').matches&&navigator.canShare&&navigator.canShare({files:[datei]}))
+      return navigator.share({files:[datei],title:name}).catch(function(e){throw (e&&e.name==='AbortError')?{code:'declined'}:e});
+  }catch(e){}
+  return saveFile0(name,data,mime);
+}
+function saveFile0(name,data,mime){
+  if(downloads)return downloads.save({filename:name,data:data});
+  return new Promise(function(ok){
+    var url=URL.createObjectURL(new Blob([data],{type:mime})),a=document.createElement('a');
+    a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(function(){URL.revokeObjectURL(url)},4000);ok();
+  });
+}
+function saveXlsx(){
+  if(!window.XLSX)return;
+  saveFile(xlsxName(),buildXlsx(),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').then(function(){toast('Ergebnisliste gespeichert.')},function(e){
+    if(e&&e.code==='declined')return;
+    toast('Speichern nicht möglich. Nutzen Sie „Tabelle kopieren“ und fügen Sie in Excel ein.');
+  });
+}
+/* Automatische Sicherung: einmal Datei wählen, danach schreibt die Seite sie nach jeder Änderung neu */
+var bak={h:null,alt:null,t:null,ts:0,err:'',busy:false,again:false};
+function kv(mode,fn){
+  return new Promise(function(ok,no){
+    var r=indexedDB.open('inventur-abgleich',1);
+    r.onupgradeneeded=function(){r.result.createObjectStore('kv')};
+    r.onerror=function(){no(r.error)};
+    r.onsuccess=function(){var tx=r.result.transaction('kv',mode),q=fn(tx.objectStore('kv'));tx.oncomplete=function(){ok(q&&q.result)};tx.onerror=function(){no(tx.error)}};
+  });
+}
+function renderBak(){
+  var can=EIGEN&&!!window.XLSX&&typeof window.showSaveFilePicker==='function';
+  $('#bakRow').hidden=!can;if(!can)return;
+  $('#btnBak').textContent=bak.h?'Andere Datei wählen':bak.alt?'Sicherung in '+bak.alt.name+' fortsetzen':'Automatische Excel-Sicherung einschalten';
+  var el=$('#bakInfo');
+  if(!bak.h&&bak.alt)el.innerHTML='<span class="pill warn">Sicherung pausiert</span> Nach dem Neuladen der Seite muss der Schreibzugriff einmal neu bestätigt werden.';
+  else if(!bak.h)el.textContent='Die Ergebnisliste wird dann nach jeder Änderung von selbst in eine Excel-Datei Ihrer Wahl geschrieben.';
+  else if(bak.err)el.innerHTML='<span class="pill bad">Nicht gesichert</span> '+esc(bak.err);
+  else el.innerHTML='<span class="pill ok">Sicherung aktiv</span> '+esc(bak.h.name)+(bak.ts?' · zuletzt geschrieben um '+esc(new Date(bak.ts).toLocaleTimeString('de-DE')):'');
+}
+function writeBak(){
+  if(!bak.h)return Promise.resolve();
+  if(bak.busy){bak.again=true;return Promise.resolve()}
+  bak.busy=true;
+  return bak.h.createWritable().then(function(w){return w.write(buildXlsx()).then(function(){return w.close()})}).then(function(){
+    bak.ts=Date.now();bak.err='';
+  },function(){
+    bak.err='Die Datei '+bak.h.name+' konnte nicht geschrieben werden. Ist sie gerade in Excel geöffnet? Bitte schließen; beim nächsten Scan wird erneut gesichert.';
+  }).then(function(){bak.busy=false;renderBak();if(bak.again){bak.again=false;return writeBak()}});
+}
+function planBak(){if(!bak.h)return;clearTimeout(bak.t);bak.t=setTimeout(writeBak,1200)}
+function pickBak(){
+  window.showSaveFilePicker({suggestedName:xlsxName(),types:[{description:'Excel-Arbeitsmappe',accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']}}]}).then(function(h){
+    bak.h=h;bak.alt=null;bak.err='';
+    try{kv('readwrite',function(st){return st.put(h,'bak')}).catch(function(){})}catch(e){}
+    return writeBak();
+  },function(e){if(!e||e.name!=='AbortError')toast('Die automatische Sicherung konnte nicht eingeschaltet werden.')}).then(function(){render()});
+}
+function copyTable(){
+  var t=exportRows().ab.map(function(r){return r.map(function(c){return String(c).replace(/[\t\n]/g,' ')}).join('\t')}).join('\n');
+  try{navigator.clipboard.writeText(t).then(function(){toast('Kopiert. In Excel mit Strg+V einfügen.')},function(){toast('Kopieren wurde vom Browser abgelehnt.')})}
+  catch(e){toast('Kopieren wird in dieser Ansicht nicht unterstützt.')}
+}
+
+/* ---------- Grundliste laden ---------- */
+function fromRows(rows){
+  var items=[],seen=new Set();
+  rows.forEach(function(r){
+    if(!r||r[0]==null)return;
+    var nr=String(r[0]).trim();
+    if(!/^\d{5,8}(\/\d{2})?$/.test(nr)||seen.has(nr))return;
+    seen.add(nr);
+    var rest=r.slice(2).filter(function(c){return c!=null&&String(c).trim()!==''}).map(function(c){return String(c).trim()});
+    var roh=rest.join(' | '),ahk=/€\s*([\d.]+,\d{2})/.exec(roh),dat=/\b(\d{2}\.\d{2}\.\d{4})\b/.exec(roh),raum=null,rx=/(?:^|[^A-Za-z0-9])([A-Z]\d{3})(?![A-Za-z0-9])/g,m;
+    while((m=rx.exec(roh))){if(!/^V\d{3}$/.test(m[1])){raum=m[1];break}}
+    items.push({nr:nr,art:r[1]==null?'':String(r[1]).trim(),bez:rest[0]||'',ahk:ahk?ahk[1]:'',datum:dat?dat[1]:'',raum:raum||'',details:roh});
+  });
+  return items;
+}
+function setDraft(name,stand,items){
+  S.draft=items.length?{name:name,stand:stand,items:items}:{error:'Es wurden keine Inventarnummern erkannt. Erwartet werden Nummern wie 1234567 oder 001234/08 am Zeilenanfang bzw. in Spalte 1.'};
+  render();
+}
+function useDraft(){
+  var D=S.draft;if(!D||D.error||D.info)return;
+  var chunks=[];for(var i=0;i<D.items.length;i+=400)chunks.push(D.items.slice(i,i+400));
+  var stand=D.stand||new Date().toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+  if(!db){S.items=D.items;S.listName=D.name;S.listStand=stand;LS.set('inv.list',{name:D.name,stand:stand,items:D.items});buildIndex();S.draft=null;toast('Grundliste übernommen.');render();planBak();return}
+  var old=S.listDocIds.slice();
+  queue=queue.then(function(){
+    var p=Promise.resolve();
+    chunks.forEach(function(c,i){p=p.then(function(){return db.doc('grundliste/teil-'+String(i).padStart(3,'0')).set({name:D.name,stand:stand,teil:i,items:c})})});
+    old.forEach(function(id){var n=parseInt(id.replace('teil-',''),10);if(!(n<chunks.length))p=p.then(function(){return db.doc('grundliste/'+id).delete()})});
+    return p.then(function(){S.draft=null;toast('Grundliste übernommen.');render()},function(e){S.err='Die Grundliste konnte nicht gespeichert werden ('+esc(e&&e.code||'Fehler')+').';render()});
+  });
+}
+
+/* ---------- Ereignisse ---------- */
+function showTab(){
+  var h=(location.hash||'').replace('#','');
+  S.tab=['scannen','abgleich','raeume','grundliste'].indexOf(h)>=0?h:'scannen';
+  render();window.scrollTo(0,0);if(S.tab==='scannen'&&S.raum&&!TOUCH)$('#scan').focus();
+}
+window.addEventListener('hashchange',showTab);
+$('#raum').addEventListener('change',function(e){setRaum(e.target.value)});
+$('#raum').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();setRaum(e.target.value);if(TOUCH)e.target.blur();else $('#scan').focus()}});
+var autoT=null;
+function submitScan(){var f=$('#scan'),v=f.value;f.value='';clearTimeout(autoT);if(addScan(v,false)!==false)f.focus()}
+$('#scanForm').addEventListener('submit',function(e){e.preventDefault();submitScan()});
+$('#scan').addEventListener('input',function(){
+  if(!S.auto)return;clearTimeout(autoT);
+  autoT=setTimeout(function(){if($('#scan').value.trim().length>=5)submitScan()},300);
+});
+$('#optTon').addEventListener('change',function(e){S.ton=e.target.checked;LS.set('inv.ton',S.ton)});
+$('#optAuto').addEventListener('change',function(e){S.auto=e.target.checked;LS.set('inv.auto',S.auto)});
+$('#suche').addEventListener('input',function(e){S.q=e.target.value;render()});
+$('#btnXlsx').addEventListener('click',saveXlsx);
+$('#btnCopy').addEventListener('click',copyTable);
+$('#btnPlPrint').addEventListener('click',function(){plPrint('')});
+$('#btnPlFile').addEventListener('click',function(){plFile('')});
+$('#btnBak').addEventListener('click',function(){
+  if(bak.h||!bak.alt||!bak.alt.requestPermission){pickBak();return}
+  bak.alt.requestPermission({mode:'readwrite'}).then(function(p){
+    if(p!=='granted'){pickBak();return}
+    bak.h=bak.alt;bak.alt=null;bak.err='';return writeBak().then(function(){render()});
+  },function(){pickBak()});
+});
+if(EIGEN&&typeof window.showSaveFilePicker==='function'&&window.indexedDB){
+  try{kv('readonly',function(st){return st.get('bak')}).then(function(h){if(h&&h.name&&!bak.h){bak.alt=h;render()}},function(){})}catch(e){}
+}
+$('#btnSich').addEventListener('click',function(){
+  var d={typ:'inventur-abgleich',version:1,erstellt:new Date().toISOString(),liste:{name:S.listName,stand:S.listStand,items:S.items},scans:Array.from(ST.scans.remote.entries()),ergaenzungen:Array.from(ST.ergaenzungen.remote.entries())};
+  saveFile('Inventur_Sicherung_'+((S.listName||'Liste').replace(/[^A-Za-z0-9_-]/g,'')||'Liste')+'_'+fileStamp()+'.json',JSON.stringify(d),'application/json').then(function(){toast('Datensicherung gespeichert.')},function(e){if(!e||e.code!=='declined')toast('Die Datensicherung konnte nicht gespeichert werden.')});
+});
+$('#sichDatei').addEventListener('change',function(e){
+  var f=e.target.files&&e.target.files[0];if(!f)return;
+  f.text().then(function(t){
+    var d=JSON.parse(t);
+    if(!d||d.typ!=='inventur-abgleich'||!d.liste||!Array.isArray(d.liste.items)||!Array.isArray(d.scans))throw new Error('format');
+    S.items=d.liste.items;S.listName=d.liste.name||'';S.listStand=d.liste.stand||'';
+    ST.scans.remote=new Map(d.scans);ST.ergaenzungen.remote=new Map(Array.isArray(d.ergaenzungen)?d.ergaenzungen:[]);
+    LS.set('inv.list',{name:S.listName,stand:S.listStand,items:S.items});LS.set('inv.scans',d.scans);LS.set('inv.supp',Array.from(ST.ergaenzungen.remote.entries()));
+    S.sel=null;S.edit=null;S.last=null;buildIndex();toast('Datensicherung geladen: '+S.items.length+' Positionen, '+d.scans.length+' Scans.');render();planBak();
+  }).catch(function(){toast('Diese Datei ist keine gültige Datensicherung.')});
+  e.target.value='';
+});
+$('#btnParse').addEventListener('click',function(){
+  var r=parseListText($('#pdfText').value);
+  setDraft(r.name,r.stand,r.items.map(function(x){return{nr:x.nr,art:x.art,bez:x.info,ahk:x.ahk,datum:x.datum,raum:x.raum,details:x.roh}}));
+});
+$('#datei').addEventListener('change',function(e){
+  var f=e.target.files&&e.target.files[0];if(!f)return;
+  if(!window.XLSX){S.draft={error:'Die Excel-Unterstützung konnte nicht geladen werden. Nutzen Sie das Textfeld.'};render();return}
+  f.arrayBuffer().then(function(buf){
+    var wb=XLSX.read(buf,{type:'array',raw:true}),rows=[],raw=[];
+    wb.SheetNames.forEach(function(n){
+      rows=rows.concat(XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:false,defval:''}));
+      raw=raw.concat(XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:true,defval:''}));
+    });
+    var base=f.name.replace(/\.[^.]+$/,''),M=parseMachRows(raw);
+    if(!M.items.length){setDraft(base,'',fromRows(rows));return}
+    /* Plausibilität: stimmen die Spalten nicht (z. B. aus PDF umgewandelte Datei), lieber ablehnen als Falsches laden */
+    var schief=M.items.filter(function(it){return !/^[\d.]+,\d{2}$/.test(it.ahk||'')||(it.datum&&!/^\d{2}\.\d{2}\.\d{4}$/.test(it.datum))||(it.baujahr&&!/^\d{4}$/.test(it.baujahr))}).length;
+    if(schief>M.items.length*0.1){S.draft={error:'Die Datei enthält '+M.items.length+' Inventarnummern, aber bei '+schief+' davon stehen die Spalten nicht an der erwarteten Stelle. Bitte die Original-Excel-Liste aus MACH verwenden (keine aus einem PDF umgewandelte Datei).'};render();return}
+    var canon=function(a){return JSON.stringify(a.map(function(it){var o={};Object.keys(it).sort().forEach(function(k){if(it[k]!=='')o[k]=it[k]});return o}))};
+    if(canon(M.items)===canon(S.items)){S.draft={info:'Diese Liste ist bereits als Grundliste geladen ('+M.items.length+' Positionen, Inhalt identisch). Sie können direkt scannen.'};render();return}
+    var dm=/(20\d{2})(\d{2})(\d{2})/.exec(base);
+    setDraft(M.name||base,dm?dm[3]+'.'+dm[2]+'.'+dm[1]:'',M.items);
+  }).catch(function(){S.draft={error:'Die Datei konnte nicht gelesen werden.'};render()});
+});
+$('#btnReset').addEventListener('click',function(){
+  if(!S.resetArmed){S.resetArmed=true;render();setTimeout(function(){S.resetArmed=false;render()},5000);return}
+  S.resetArmed=false;S.last=null;
+  Array.from(scansMap().keys()).forEach(function(id){persist(id,null)});
+  toast('Alle Scans wurden gelöscht.');render();
+});
+document.addEventListener('click',function(e){
+  var t=e.target.closest('button');if(!t)return;
+  if(t.dataset.del){persist(t.dataset.del,null);render()}
+  else if(t.dataset.sel){S.sel={id:t.dataset.sel,code:t.dataset.code};S.edit=null;render();var hs=S.tab==='abgleich'?$('#abDetail'):$('#detail');if(hs.scrollIntoView)hs.scrollIntoView({block:'nearest'})}
+  else if(t.dataset.edit){S.edit=t.dataset.edit;render();var fi=(t.dataset.focus&&document.querySelector('#f-raum'))||document.querySelector('form[data-form] input');if(fi){fi.focus();if(fi.select)fi.select()}}
+  else if(t.dataset.cancel){S.edit=null;render()}
+  else if(t.dataset.mark){if(addScan(t.dataset.mark,true)===false)toast('Tragen Sie zuerst im Reiter Scannen einen Raum ein.');else toast(t.dataset.mark+' als vorhanden in Raum '+S.raum+' markiert.')}
+  else if(t.dataset.filter){S.filter=t.dataset.filter;render()}
+  else if(t.dataset.pl){plPrint(t.dataset.pl)}
+  else if(t.dataset.room){setRaum(t.dataset.room);location.hash='#scannen';showTab()}
+  else if(t.id==='btnUse')useDraft();
+  else if(t.id==='btnDrop'){S.draft=null;render()}
+});
+
+document.addEventListener('submit',function(e){
+  var f=e.target;if(!f.matches||!f.matches('form[data-form]'))return;
+  e.preventDefault();
+  var felder={},id=f.dataset.form,neuRaum='';
+  Array.prototype.forEach.call(f.querySelectorAll('input[name]'),function(i){var v=i.value.trim();if(i.name==='__raum'){neuRaum=v.toUpperCase();return}if(v)felder[i.name]=v});
+  var alt=merged('ergaenzungen').get(id),sc=scansMap().get(id),msg='Angaben gespeichert.';
+  if(Object.keys(felder).length||alt)persist(id,Object.keys(felder).length?{nr:f.dataset.nr,felder:felder,ts:Date.now()}:null,'ergaenzungen');
+  if(sc&&neuRaum&&neuRaum!==sc.raum){
+    persist(id,{code:sc.code,raum:neuRaum,ts:sc.ts||Date.now(),manuell:!!sc.manuell,umgebucht:Date.now()});
+    msg=f.dataset.nr+' von Raum '+sc.raum+' nach '+neuRaum+' umgebucht.';
+  }
+  S.edit=null;toast(msg);render();
+  if(S.tab==='scannen'&&!TOUCH)$('#scan').focus();
+});
+
+/* ---------- Kamera (Handy-Fassung) ---------- */
+var ZXING_URL="static/zxing.min.js?v=dcda6eab26";
+var zxLaden=null;
+function ladeZxing(){
+  if(window.ZXing)return Promise.resolve();
+  if(!zxLaden)zxLaden=new Promise(function(ok,no){
+    var sc=document.createElement('script');sc.src=ZXING_URL;
+    sc.onload=function(){window.ZXing?ok():no(new Error('Die Lesebibliothek ist beschädigt.'))};
+    sc.onerror=function(){zxLaden=null;no(new Error('Die Lesebibliothek konnte nicht geladen werden.'))};
+    document.head.appendChild(sc);
+  });
+  return zxLaden;
+}
+var CAM={stream:null,track:null,det:null,zx:null,run:false,busy:false,last:'',lastT:0,pause:0,torch:false,canvas:null,n:0};
+function camHinweis(t,k){$('#camMsg').innerHTML=t?'<div class="note'+(k?' '+k:'')+'">'+esc(t)+'</div>':''}
+function camOeffnen(){
+  $('#cam').hidden=false;document.body.classList.add('cam-offen');$('#camRaum').value=S.raum;CAM.n=0;
+  try{history.pushState({cam:1},'')}catch(e){}
+  try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();if(ac.resume)ac.resume()}catch(e){}
+  camAnzeige();
+  if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+    camHinweis('Die Kamera ist nur verfügbar, wenn die App über eine https-Adresse geöffnet wurde.','bad');return;
+  }
+  camHinweis('Kamera wird gestartet …');
+  navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080}}}).then(function(st){
+    if($('#cam').hidden){st.getTracks().forEach(function(t){t.stop()});return}
+    CAM.stream=st;CAM.track=st.getVideoTracks()[0];
+    var v=$('#camVideo');v.muted=true;v.setAttribute('playsinline','');v.srcObject=st;
+    return v.play().then(camDetektor).then(function(){
+      if(!CAM.stream)return;
+      camHinweis('');
+      var caps=CAM.track&&CAM.track.getCapabilities?CAM.track.getCapabilities():{};
+      $('#camLicht').hidden=!caps.torch;
+      CAM.run=true;camSchleife();
+    });
+  }).catch(function(e){
+    var n=e&&e.name;
+    camHinweis(n==='NotAllowedError'?'Der Zugriff auf die Kamera wurde nicht erlaubt. Bitte in den Einstellungen des Browsers bzw. des Handys die Kamera für diese App freigeben.':
+      n==='NotFoundError'||n==='OverconstrainedError'?'Auf diesem Gerät wurde keine passende Kamera gefunden.':
+      n==='NotReadableError'?'Die Kamera wird gerade von einer anderen App benutzt. Bitte diese schließen.':
+      (e&&e.message)||'Die Kamera konnte nicht gestartet werden.','bad');
+  });
+}
+function camDetektor(){
+  if(CAM.det||CAM.zx)return Promise.resolve();
+  var zx=function(){return ladeZxing().then(function(){
+    var Z=window.ZXing,h=new Map();
+    h.set(Z.DecodeHintType.POSSIBLE_FORMATS,[Z.BarcodeFormat.CODE_128,Z.BarcodeFormat.CODE_39,Z.BarcodeFormat.EAN_13,Z.BarcodeFormat.ITF]);
+    h.set(Z.DecodeHintType.TRY_HARDER,true);
+    var r=new Z.MultiFormatReader();r.setHints(h);CAM.zx={Z:Z,r:r,h:h};CAM.canvas=document.createElement('canvas');
+  })};
+  /* eingebaute Erkennung des Browsers (Android, macOS), sonst die mitgelieferte Bibliothek */
+  if('BarcodeDetector' in window&&window.BarcodeDetector.getSupportedFormats){
+    return window.BarcodeDetector.getSupportedFormats().then(function(f){
+      var w=['code_128','code_39','ean_13','itf'].filter(function(x){return f.indexOf(x)>=0});
+      if(w.indexOf('code_128')<0)return zx();
+      CAM.det=new window.BarcodeDetector({formats:w});
+    },zx);
+  }
+  return zx();
+}
+function camLesen(){
+  var v=$('#camVideo');
+  if(!v.videoWidth)return Promise.resolve(null);
+  if(CAM.det)return CAM.det.detect(v).then(function(c){return c&&c.length?c[0].rawValue:null});
+  /* nur den Streifen um den Zielrahmen auswerten: schneller und weniger Fehlerkennungen */
+  var vw=v.videoWidth,vh=v.videoHeight,sw=vw*0.92,sh=vh*0.46,sc=Math.min(1,1280/sw),c=CAM.canvas;
+  c.width=Math.round(sw*sc);c.height=Math.round(sh*sc);
+  var g=c.getContext('2d',{willReadFrequently:true});g.drawImage(v,(vw-sw)/2,(vh-sh)/2,sw,sh,0,0,c.width,c.height);
+  var Z=CAM.zx.Z;
+  try{return Promise.resolve(CAM.zx.r.decode(new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(c))),CAM.zx.h).getText())}
+  catch(e){return Promise.resolve(null)}
+}
+function camSchleife(){
+  if(!CAM.run)return;
+  var jetzt=Date.now();
+  if(CAM.busy||jetzt<CAM.pause||document.hidden){setTimeout(camSchleife,120);return}
+  CAM.busy=true;
+  camLesen().then(function(text){
+    CAM.busy=false;
+    text=text==null?'':String(text).trim();
+    if(text){
+      /* derselbe Barcode im Bild wird nur einmal gezählt; ein anderer sofort */
+      if(text===CAM.last&&jetzt-CAM.lastT<4000)CAM.lastT=jetzt;
+      else{CAM.last=text;CAM.lastT=jetzt;CAM.pause=jetzt+1100;camTreffer(text)}
+    }
+    setTimeout(camSchleife,CAM.det?160:90);
+  },function(){CAM.busy=false;setTimeout(camSchleife,400)});
+}
+function camTreffer(text){
+  try{if(navigator.vibrate)navigator.vibrate(50)}catch(e){}
+  $('#cam').classList.add('blitz');setTimeout(function(){$('#cam').classList.remove('blitz')},180);
+  S.neu=false;
+  addScan(text,false,true);
+  if(S.neu)CAM.n++;
+  if(S.last&&S.last.k==='bad')try{if(navigator.vibrate)navigator.vibrate([90,70,90])}catch(e){}
+  camAnzeige();
+}
+function camAnzeige(){
+  if($('#cam').hidden)return;
+  if(document.activeElement!==$('#camRaum')&&$('#camRaum').value.trim().toUpperCase()!==S.raum)$('#camRaum').value=S.raum;
+  var hier=0;scansMap().forEach(function(sc){if(sc&&sc.raum===S.raum)hier++});
+  $('#camZahl').textContent=S.raum?(hier+' in Raum '+S.raum+' erfasst'+(CAM.n?' · '+CAM.n+' in dieser Sitzung':'')):'';
+  $('#camDetails').hidden=!S.sel;
+  var L=S.last;if(!L)return;
+  var e=$('#camErg');
+  e.className='fb '+L.k;e.innerHTML='<span class="t">'+esc(L.t)+'</span><span class="c">'+esc(L.c)+'</span><span class="sub">'+esc(L.d)+'</span>';
+}
+function camSchliessen(zurueck){
+  CAM.run=false;
+  if(CAM.stream)CAM.stream.getTracks().forEach(function(t){t.stop()});
+  CAM.stream=null;CAM.track=null;CAM.torch=false;$('#camLicht').textContent='Licht';
+  var v=$('#camVideo');try{v.pause()}catch(e){}v.srcObject=null;
+  if(!$('#cam').hidden){$('#cam').hidden=true;document.body.classList.remove('cam-offen');if(!zurueck&&history.state&&history.state.cam)history.back();render()}
+}
+$('#btnCam').addEventListener('click',camOeffnen);
+$('#camZu').addEventListener('click',function(){camSchliessen()});
+$('#camDetails').addEventListener('click',function(){camSchliessen();var d=$('#detail');if(d&&d.scrollIntoView)d.scrollIntoView({block:'start'})});
+$('#camRaum').addEventListener('change',function(e){setRaum(e.target.value)});
+$('#camRaum').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();setRaum(e.target.value);e.target.blur()}});
+$('#camLicht').addEventListener('click',function(){
+  if(!CAM.track)return;CAM.torch=!CAM.torch;
+  CAM.track.applyConstraints({advanced:[{torch:CAM.torch}]}).then(function(){$('#camLicht').textContent=CAM.torch?'Licht aus':'Licht'},function(){CAM.torch=false;toast('Das Licht lässt sich auf diesem Gerät nicht schalten.')});
+});
+/* Zurück-Taste des Handys schließt die Kamera statt die App */
+window.addEventListener('popstate',function(){if(!$('#cam').hidden)camSchliessen(true)});
+document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!$('#cam').hidden)camSchliessen()});
+document.addEventListener('visibilitychange',function(){if(document.hidden&&!$('#cam').hidden)camSchliessen()});
+
+/* ---------- Tabellen als Karten auf schmalen Bildschirmen ---------- */
+function labels(){
+  Array.prototype.forEach.call(document.querySelectorAll('.karten table'),function(t){
+    var hs=Array.prototype.map.call(t.querySelectorAll('thead th'),function(th){return th.textContent.trim()});
+    Array.prototype.forEach.call(t.querySelectorAll('tbody tr'),function(tr){
+      Array.prototype.forEach.call(tr.children,function(td,i){if(!td.hasAttribute('data-label'))td.setAttribute('data-label',td.colSpan>1?'':(hs[i]||''))});
+    });
+  });
+}
+
+/* ---------- App: Offline-Betrieb, dauerhafter Speicher, Installation ---------- */
+if('serviceWorker' in navigator&&window.isSecureContext)window.addEventListener('load',function(){navigator.serviceWorker.register('sw.js').catch(function(){})});
+/* bittet den Browser, die Daten nicht bei Speicherknappheit zu löschen */
+try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persisted().then(function(p){if(!p)return navigator.storage.persist()}).catch(function(){})}catch(e){}
+var installEvt=null;
+window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();installEvt=e;$('#btnInstall').hidden=false});
+window.addEventListener('appinstalled',function(){installEvt=null;$('#btnInstall').hidden=true;toast('Die App ist installiert.')});
+$('#btnInstall').addEventListener('click',function(){if(!installEvt)return;installEvt.prompt();installEvt.userChoice.then(function(){installEvt=null;$('#btnInstall').hidden=true},function(){})});
+
+/* ---------- Start ---------- */
+var EINGEBAUT=/*SEED*/null;
+S.raum=LS.get('inv.raum','');S.ton=LS.get('inv.ton',true);S.auto=LS.get('inv.auto',false);
+$('#raum').value=S.raum;$('#optTon').checked=S.ton;$('#optAuto').checked=S.auto;
+showTab();
+var slowT=setTimeout(function(){S.slow=true;render()},10000);
+function localMode(){
+  clearTimeout(slowT);S.mode='lokal';
+  var L=LS.get('inv.list',null);
+  if(!(L&&Array.isArray(L.items)&&L.items.length))L=EINGEBAUT; /* ohne gemeinsamen Speicher: mitgelieferte Liste V431 */
+  if(L&&Array.isArray(L.items)){S.items=L.items;S.listName=L.name||'';S.listStand=L.stand||''}
+  ST.scans.remote=new Map(LS.get('inv.scans',[]));ST.ergaenzungen.remote=new Map(LS.get('inv.supp',[]));buildIndex();render();
+}
+var use=window.claude&&typeof window.claude.use==='function'?window.claude.use.bind(window.claude):null;
+if(!use)localMode();
+else Promise.all([use('db').catch(function(){return null}),use('downloads').catch(function(){return null})]).then(function(r){
+  db=r[0];downloads=r[1];
+  if(!db){localMode();return}
+  var got={l:false,s:false,e:false};
+  function ready(k){got[k]=true;if(got.l&&got.s&&got.e){clearTimeout(slowT);S.slow=false;S.mode='ok'}}
+  function dead(e){clearTimeout(slowT);S.slow=false;S.err='Die Verbindung zum Speicher wurde beendet ('+esc(e&&e.code||'Fehler')+'). Bitte die Seite neu laden.';render()}
+  db.collection('grundliste').onSnapshot(function(snap){
+    var items=[],ids=[];
+    snap.docs.forEach(function(d){var x=d.data();ids.push(d.id);if(x&&Array.isArray(x.items)){items=items.concat(x.items);S.listName=x.name||'';S.listStand=x.stand||''}});
+    S.items=items;S.listDocIds=ids;
+    if(!items.length&&EINGEBAUT){S.items=EINGEBAUT.items;S.listName=EINGEBAUT.name;S.listStand=EINGEBAUT.stand} /* nichts hochgeladen: mitgelieferte Liste */
+    buildIndex();ready('l');render();
+  },dead);
+  db.collection('scans').onSnapshot(function(snap){
+    var m=new Map();snap.docs.forEach(function(d){var x=d.data();if(x)m.set(d.id,x)});
+    ST.scans.remote=m;ready('s');render();
+  },dead);
+  db.collection('ergaenzungen').onSnapshot(function(snap){
+    var m=new Map();snap.docs.forEach(function(d){var x=d.data();if(x)m.set(d.id,x)});
+    ST.ergaenzungen.remote=m;ready('e');render();
+  },dead);
+});
+})();
+</script>
+</body>
+</html>
